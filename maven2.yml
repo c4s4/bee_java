@@ -1,0 +1,12 @@
+- build:       maven2
+  description: Build file for Maven 2 projects
+  extends:     ":java:java.yml"
+
+- properties:
+    name:         ~
+    jv_build_dir: "target"
+    jv_src:       "src/main/java"
+    jv_test_src:  "src/test/java"
+    jv_res:       "src/main/resources"
+    jv_test_res:  "src/test/resources"
+

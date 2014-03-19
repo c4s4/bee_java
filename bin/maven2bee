@@ -1,0 +1,113 @@
+#!/usr/bin/env ruby
+
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Script to extract Maven 2 dependencies from project file into a Bee 
+# dependencies file.
+
+require 'rexml/document'
+require 'rexml/xpath'
+require 'erb'
+
+HELP = 'Usage: maven2bee file'
+TEMPLATE = ERB.new('- group:    <%= group %>
+  artifact: <%= artifact %>
+  version:  <%= version %>
+% if type
+  type:     <%= type %>
+% end
+% if scope
+%   if scope.length > 1
+  scope:    [<%= scope.join(", ") %>]
+%   else
+  scope:    <%= scope[0] %>
+%   end
+% end
+% if classifier
+  classifier: <%= classifier %>
+% end
+
+', nil, '%')
+
+# scope availability: list for a given dependency scope the implied classpath scopes
+SCOPE_AVAILABILITY = {
+  'compile'  => ['compile', 'test', 'runtime'],
+  'provided' => ['compile', 'test'],
+  'runtime'  => ['test', 'runtime'],
+  'test'     => ['test'],
+}
+
+def deps_to_yaml(file)
+  result = ''
+  document = REXML::Document.new(File.read(ARGV[0]))
+  # load maven properties
+  properties = {}
+  REXML::XPath.each(document, '/project/properties/*') do |property|
+    name = property.name
+    value = property.text.strip
+    properties[name] = value
+  end
+  REXML::XPath.each(document, '//dependency') do |dependency|
+    group = dependency.elements['groupId'].text.strip
+    artifact = dependency.elements['artifactId'].text.strip
+    version = dependency.elements['version'].text.strip
+    if dependency.elements['type'] and dependency.elements['type'].text
+      type = dependency.elements['type'].text.strip
+    else
+      type = nil
+    end
+    if dependency.elements['scope'] and dependency.elements['scope'].text
+      scope = dependency.elements['scope'].text.strip
+      scope = SCOPE_AVAILABILITY[scope]
+    else
+      scope = nil
+    end
+    if dependency.elements['classifier'] and dependency.elements['classifier'].text
+      classifier = dependency.elements['classifier'].text.strip
+    else
+      classifier = nil
+    end
+    # replace properties references with their values
+    group = evaluate(group, properties)
+    artifact = evaluate(artifact, properties)
+    version = evaluate(version, properties)
+    type = evaluate(type, properties)
+    scope = evaluate(scope, properties)
+    classifier = evaluate(classifier, properties)
+    # build the dependency entry
+    result += TEMPLATE.result(binding)
+  end
+  return result
+end
+
+def evaluate(value, properties)
+  return nil if value == nil
+  if value =~ /\$\{.+\}/
+    name = value[2...-1]
+    raise "Property '#{name}' not found" if !properties.has_key?(name)
+    return properties[name]
+  else
+    return value
+  end
+end
+
+if ARGV.length < 1
+  puts HELP
+  exit
+else
+  for file in ARGV
+    puts deps_to_yaml(file)
+  end
+end

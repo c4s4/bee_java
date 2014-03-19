@@ -1,0 +1,13 @@
+package <%= File.dirname(main.gsub(/\./, '/')).gsub(/\//, '.') %>;
+
+public class <%= File.basename(main.gsub(/\./, '/')) %> {
+
+    public static String hello(String who) {
+        return "Hello "+who+"!";
+    }
+
+    public static void main(String[] args) {
+        System.out.println(hello("World"));
+    }
+
+}

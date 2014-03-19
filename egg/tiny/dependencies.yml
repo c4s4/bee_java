@@ -1,0 +1,6 @@
+- repository: http://mirrors.ibiblio.org/maven2
+
+#- group:    junit
+#  artifact: junit
+#  version:  4.3
+#  scope:    test

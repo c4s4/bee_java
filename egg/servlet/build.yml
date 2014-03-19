@@ -1,0 +1,48 @@
+- build:       <%= name %>
+  description: Build file for project <%= name.capitalize %>
+  extends:
+  - ":java:java.yml"
+  - tomcat.yml
+  alias:
+    run: ~
+
+- properties:
+    name:        "<%= name %>"
+    version:     "0.0.1"
+    tomcat_home: ~
+    jv_main:     "<%= main %>"
+    jv_clean_dirs:
+    - :jv_build_dir
+    - "#{tomcat_base}/logs/*"
+    - "#{tomcat_base}/work/*"
+    - "#{tomcat_base}/temp/*"
+
+- target:      web
+  depends:     jv_jar
+  description: Generate web archive
+  script:
+  - mkdir: "#{jv_build_dir}/web"
+  - copy:
+      root: web
+      dest: "#{jv_build_dir}/web"
+  - mkdir: "#{jv_build_dir}/web/WEB-INF/lib"
+  - cp:
+      src:  :jv_jar
+      dest: "#{jv_build_dir}/web/WEB-INF/lib"
+
+- target:      war
+  depends:     web
+  description: Build the WAR archive
+  script:
+  - zip:
+      root: "#{jv_build_dir}/web"
+      dest: "#{jv_build_dir}/#{name}-#{version}.war"
+
+- target:      run
+  depends:     [web, tomcat_restart]
+  description: Run application using Tomcat
+
+- target:      logs
+  description: Print Tomcat logs on the console
+  script:
+  - "tail -f tomcat/logs/catalina.out"

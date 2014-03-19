@@ -1,0 +1,10 @@
+- repository: http://mirrors.ibiblio.org/maven2
+
+- group:    junit
+  artifact: junit
+  version:  4.3
+  scope:    test
+
+- group:    servletapi
+  artifact: servletapi
+  version:  2.4

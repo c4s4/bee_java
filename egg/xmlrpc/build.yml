@@ -1,0 +1,21 @@
+- build:       <%= name %>
+  description: Build file for project <%= name.capitalize %>
+  extends:
+  - ":java:java.yml"
+  alias:
+    test: ~
+
+- properties:
+    name:         "<%= name %>"
+    version:      "0.0.1"
+    jv_main:      "test.Server"
+    jv_res:       :jv_src
+    client_main:  "test.Client"
+
+- target:      client
+  depends:     jv_compile
+  description: Run XML-RPC client
+  script:
+  - java.java:
+      main:      :client_main
+      classpath: :jv_runtime_cp

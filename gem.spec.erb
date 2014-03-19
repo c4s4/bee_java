@@ -1,0 +1,38 @@
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+require 'rubygems'
+
+SPEC = Gem::Specification.new do |spec|
+  spec.name = '<%= name %>'
+  spec.version = '<%= version %>'
+  spec.author = '<%= author %>'
+  spec.email = '<%= email %>'
+  spec.homepage = '<%= homepage %>'
+  spec.rubyforge_project = '<%= rubyforge %>'
+  spec.platform = <%= platform %>
+  spec.summary = '<%= summary %>'
+  spec.files = Dir.glob(['{lib,egg,tools}/**/*', 'java.yml', 'maven2.yml']).delete_if do |file|
+      file =~ /CVS/ || file =~ /^build/
+  end
+  spec.require_path = '<%= lib_dir %>'
+  spec.test_file = 'test/ts_<%= name %>.rb'
+  spec.has_rdoc = true
+  spec.extra_rdoc_files = ['<%= readme_file %>', '<%= license_file %>']
+  spec.executables = ['bee2maven', 'maven2bee', 'gendeps']
+<% for key in dependencies.keys.sort %>
+  spec.add_dependency("<%= key %>", <%= dependencies[key].inspect %>)
+<% end %>
+  spec.post_install_message = 'Enjoy bee!'
+end

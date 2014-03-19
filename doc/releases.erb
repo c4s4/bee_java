@@ -1,0 +1,30 @@
+<p>Here is the history of bee project:</p>
+
+% for release in @data
+<h2>Release <%= release['release'] %> (<%= release['date'] %>)</h2>
+<p><%= release['description'] %></p>
+%   if release['added']
+<b>Added:</b>
+<ul>
+%     for added in release['added']
+<li><%= added %></li>
+%     end
+</ul>
+%   end
+%   if release['removed']
+<b>Removed:</b>
+<ul>
+%     for removed in release['removed']
+<li><%= removed %></li>
+%     end
+</ul>
+%   end
+%   if release['fixed']
+<b>Fixed:</b>
+<ul>
+%     for fixed in release['fixed']
+<li><%= fixed %></li>
+%     end
+</ul>
+%   end
+% end

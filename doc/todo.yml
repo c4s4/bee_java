@@ -1,0 +1,3 @@
+- Improve test coverage.
+- Manage HTTP status 301 while fetching dependencies.
+

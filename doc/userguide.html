@@ -1,0 +1,103 @@
+<!--
+Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<p>This file is the reference documentation for the Java Bee package.
+This package is made of tasks to build your Java projects and templates
+to quick start new ones.</p>
+
+<h2>Installation</h2>
+
+<p>Bee packages are managed as Ruby Gems, thus you can install Bee Java
+typing <tt>sudo gem install bee_java</tt> under Unix systems or <tt>gem 
+install bee_java</tt> under Windows. Note that this will also install Bee
+if not already installed because Bee is a required dependency of 
+<i>bee_java</i>.</p>
+
+<h2>Java Tasks</h2>
+
+<p>To get a reference about Java tasks, please see 
+<a href="tasksreference.html">Tasks Reference</a> section.</p>
+
+<p>You can also get documentation about a given task in a terminal typing
+<tt>bee -k java.jar</tt> for instance. To list all available tasks in the
+Java package, type <tt>bee -k java.?</tt>.</p>
+
+<h2>Java Templates</h2>
+
+<p>To get a reference about Java templates, please see 
+<a href="templatesreference.html">Templates Reference</a> section.</p>
+
+<p>You can also get documentation about a given template in a terminal typing
+<tt>bee -e java.lib</tt> for instance. To list all available templates in the
+Java package, type <tt>bee -e java.?</tt>.</p>
+
+<h2>Tools</h2>
+
+<p>This package comes with tools to convert dependencies file from and to maven
+project files.</p>
+
+<h3>gendeps</h3>
+
+<p>This tools generates a Bee dependencies file for existing Maven 2 project.
+To do so, type following command line in the root directory of the project:</p>
+
+<pre>
+gendeps > dependencies.yml
+</pre>
+
+<p>To generate this file, the tool runs Maven to get the list of dependencies
+using the command <tt>mvn dependency:list</tt> and parse result. The scope
+of Maven dependencies is converted into Bee scope with the following table:</p>
+
+<table>
+<tr><th>Maven Scope</th><th>Bee Scopes</th></tr>
+<tr><td>compile</td><td>compile, test, runtime</td></tr>
+<tr><td>provided</td><td>compile, test</td></tr>
+<tr><td>runtime</td><td>test, runtime</td></tr>
+<tr><td>test</td><td>test</td></tr>
+</table>
+
+<p>Dependencies are searched recursively, thus generated list might be quite
+big as it includes all dependencies that will be included in CLASSPATH. You
+should check for collisions in this list as this is a quite common issue in
+the case of recursive dependencies.</p>
+
+<h3>maven2bee</h3>
+
+<p>This script converts a Maven (1 or 2) POM file into a Bee dependencies file.
+Dependencies are not searched recursively, thus you should prefer using the
+tool <tt>gendeps</tt> for Maven 2 projects. Maven scope is converted with the
+same table than with the <tt>gendeps</tt> tool.</p>
+
+<p>To convert a Maven 1 project file you would type:</p>
+
+<pre>
+maven2bee project.xml > dependencies.yml
+</pre>
+
+<h3>bee2maven</h3>
+
+<p>This script converts a Bee dependencies file into a Maven POM file (for the
+part related to dependencies). Note that it doesn't manage scopes and that
+you should manage them by hand in generated file.</p>
+
+<p>To convert a Bee dependencies file into a Maven POM, type:</p>
+
+<pre>
+bee2maven dependencies.yml > project.xml
+</pre>
+
+<p><i>Enjoy!</i></p>

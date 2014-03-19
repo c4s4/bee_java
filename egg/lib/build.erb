@@ -1,0 +1,8 @@
+- build:       <%= name %>
+  description: Build file for project <%= name.capitalize %>
+  extends:     ":java:java.yml"
+
+- properties:
+    name:       "<%= name %>"
+    version:    "0.0.1"
+    jv_main:    "<%= main %>"

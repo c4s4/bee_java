@@ -1,0 +1,64 @@
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- build:       xmlrpc
+  default:     all
+  description: "Generate a sample XML-RPC Java project"
+
+- properties:
+    name: xmlrpc
+    description: |
+      This script will create a sample XML-RPC Java project.
+
+- target:      welcome
+  description: "Print information message"
+  script:
+  - print: :description
+
+- target:      prompt
+  depends:     welcome
+  description: "Prompt for project information"
+  script:
+  - print: "Please answer following questions to generate the project:"
+  - prompt:
+      message: "What is the project's name?"
+      default: :name
+      property: name
+
+- target:      generate
+  depends:     prompt
+  description: "Generate project"
+  script:
+  - print: "Generating project..."
+  - rb: |
+      error "A directory named '#{name}' already exists, aborting" if
+        File.exists?("#{here}/#{name}")
+  - mkdir: "#{here}/#{name}"
+  - erb: { src: "#{base}/xmlrpc/build.yml", dest: "#{here}/#{name}/build.yml" }
+  - copy:
+      root:     "#{base}/xmlrpc/"
+      excludes: "**/build.yml"
+      dest:     "#{here}/#{name}"
+
+- target:      customization
+  depends:     generate
+  description: "Print information about project customization"
+  script:
+  - print: |
+      Project has been generated in directory '#{name}'. Type 'bee -b' to
+      print information about generated build file.
+      Enjoy!
+
+- target:  all
+  depends: [welcome, prompt, generate, customization]

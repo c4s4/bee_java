@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Script to generate dependencies YAML file for a Maven 2 project.
+
+require 'erb'
+
+DEFAULT_REPOSITORY = 'http://mirrors.ibiblio.org/maven2'
+
+TEMPLATE = ERB.new('- group:      "<%= group %>"
+  artifact:   "<%= artifact %>"
+  version:    "<%= version %>"
+% if type
+  type:       "<%= type %>"
+% end
+% if scopes
+%   if scopes.length > 1
+  scope:      [<%= scopes.map{|s| "\"#{s}\""}.join(", ") %>]
+%   else
+  scope:      "<%= scopes[0] %>"
+%   end
+% end
+% if classifier
+  classifier: "<%= classifier %>"
+% end
+% if path
+  path:       "<%= path %>"
+% end
+
+', nil, '%')
+
+DEFAULT_SCOPE = 'compile'
+
+# scope availability: list for a given dependency scope the implied classpath
+# scopes
+SCOPE_AVAILABILITY = {
+  'compile'  => ['compile', 'test', 'runtime'],
+  'provided' => ['compile', 'test'],
+  'runtime'  => ['test', 'runtime'],
+  'test'     => ['test'],
+  'system'   => ['compile', 'test', 'runtime'],
+}
+
+def error(message)
+  $stderr.puts message
+  exit(1)
+end
+
+def main
+  lines = `mvn dependency:list`
+  puts "- repository: \"#{DEFAULT_REPOSITORY}\""
+  puts
+  for line in lines.split("\n")
+    if line =~ /^\[INFO\]    ([^:]+):([^:]+):([^:]+):([^:]+):([^:]+)\s*$/
+      group = $1
+      artifact = $2
+      type = $3
+      version = $4
+      scope = $5 || DEFAULT_SCOPE
+      classifier = nil
+      error("Unknown dependency scope '#{scope}'") if
+        !SCOPE_AVAILABILITY.keys.include?(scope)
+      scopes = SCOPE_AVAILABILITY[scope]
+      scopes = nil if scope == 'compile'
+      if scope == 'system'
+        $stderr.puts "Set path for system dependency '#{group}:#{artifact}:#{version}'"
+        path = 'TODO'
+      else
+        path = nil
+      end
+      puts TEMPLATE.result(binding)
+    end
+  end
+end
+
+main

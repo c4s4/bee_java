@@ -1,0 +1,23 @@
+= <%= name.gsub(/_/, ' ').split(' ').map{|e| e.capitalize}.join(' ') %>
+
+<%= summary %>
+
+= Home Page
+
+This software is hosted on RubyForge (thanks to them for their great job!)
+at <%= homepage %>.
+
+= Documentation
+
+For more information about this software, please read the documentation
+in  "<%= name %>" section on Gem server (type "gem_server" and go at URL
+http://localhost:8808) if you installed it using Gem.
+
+= License
+
+bee is Open Source and released under the Apache License (see LICENSE file
+or go to URL http://www.apache.org/licenses/LICENSE-2.0).
+
+= Copyright
+
+<%= name.capitalize %> version <%= version %> (C) <%= author %> - <%= years %>

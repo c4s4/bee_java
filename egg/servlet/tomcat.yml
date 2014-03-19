@@ -1,0 +1,56 @@
+- build:       tomcat
+  description: Build file to manage Tomcat
+
+- properties:
+    # installation directory
+    tomcat_home:   ~
+    # starting script
+    tomcat_script: "#{tomcat_home}/bin/catalina.sh"
+    # the catalina base to use
+    tomcat_base:   "#{base}/tomcat"
+    # command line options
+    tomcat_opts:   "-Xms64m -Xmx256m -XX:MaxPermSize=64m"
+    # environment variables to set
+    tomcat_env:    |
+      export CATALINA_HOME="#{tomcat_home}"
+      export CATALINA_BASE="#{tomcat_base}"
+      export CATALINA_OPTS="#{tomcat_opts}"
+
+- target:      tomcat_check
+  description: Check that Tomcat home is set
+  script:
+  - if: "!defined?(tomcat_home)"
+    then:
+    - raise: "You must set property 'tomcat_home' in 'tomcat.yml' build file"
+
+- target:      tomcat_start
+  depends:     tomcat_check
+  description: Start Tomcat server
+  script:
+  - print: "Starting Tomcat..."
+  - |
+    #{tomcat_env}
+    #{tomcat_script} start
+
+- target:      tomcat_stop
+  depends:     tomcat_check
+  description: Stop Tomcat server
+  script:
+  - print: "Stopping Tomcat..."
+  - |
+    #{tomcat_env}
+    #{tomcat_script} stop -force
+
+- target:      tomcat_restart
+  depends:     tomcat_check
+  description: Restart Tomcat server
+  script:
+  - print: "Stopping Tomcat..."
+  - |
+    #{tomcat_env}
+    #{tomcat_script} stop -force
+  - sleep: 3
+  - print: "Starting Tomcat..."
+  - |
+    #{tomcat_env}
+    #{tomcat_script} start

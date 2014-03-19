@@ -1,0 +1,125 @@
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- build: test_java
+  default: all
+  description: Build file to test Java package
+
+- properties:
+  - name:      "test"
+  - src:       "src"
+  - build:     "build"
+  - classes:   "#{build}/classes"
+  - javadoc:   "#{build}/api"
+  - jar:       "#{build}/#{name}.jar"
+  - erb:       "manifest.erb"
+  - manifest:  "#{build}/manifest"
+  - main:      "test.Test"
+  - classpath: :jar
+  - junit:     "/opt/java/junit-4.4"
+  - test:      "test"
+  - test_classes: "#{build}/test-classes"
+  - lib:       "#{build}/lib"
+
+- target: javac
+  description: Test javac task
+  script:
+  - java.javac:
+      src:  :src
+      dest: :classes
+
+- target: jar
+  depends: javac
+  description: Test jar task
+  script:
+  - erb:
+      src:  :erb
+      dest: :manifest
+  - java.jar:
+      src:      :classes
+      manifest: :manifest
+      dest:     :jar
+
+- target: junit
+  depends: javac
+  description: Run unit tests
+  script:
+  - find:
+      includes: "#{junit}/junit*.jar"
+      excludes: "#{junit}/junit*-src.jar"
+      property: junit_cp
+  - java.javac:
+      src: :test
+      dest: :test_classes
+      classpath: [:junit_cp, :classes]
+  - java.junit:
+      classpath: [:classes, :test_classes, :junit_cp]
+      src:       :test
+
+- target: javadoc
+  description: Document Java source files
+  script:
+  - java.javadoc:
+      src: :src
+      dest: :javadoc
+
+- target: java
+  depends: jar
+  description: Run java program
+  script:
+  - java.java:
+      main:       :main
+      classpath:  :classpath
+      properties: { who: World }
+  - java.java:
+      main:       :main
+      classpath:  :classes
+      properties: { who: World }
+  - java.java:
+      jar: :jar
+      properties: { who: World }
+
+- target: deps
+  description: Fetch dependencies
+  script:
+  # maven 1 repository
+  - rmdir: :build
+  - java.deps:
+      src:  dependencies.yml
+      dest: :lib
+      repos: http://www.ibiblio.org/maven
+  # maven 2 repository
+  - rmdir: :build
+  - java.deps:
+      src:  dependencies.xml
+      dest: :lib
+      repos: http://repo1.maven.org/maven2
+      repotype: maven2
+
+- target: classpath
+  description: Compute a classpath
+  script:
+  #- java.clean:
+  - java.classpath:
+      file:     pom.xml
+      property: classpath
+  - print: :classpath
+
+- target: clean
+  description: Clean generated files
+  script:
+  - rmdir: :build
+
+- target: all
+  depends: [clean, javac, jar, junit, javadoc, java, deps]

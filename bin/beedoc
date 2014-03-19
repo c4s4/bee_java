@@ -1,0 +1,800 @@
+#!/usr/bin/env ruby
+
+# Copyright 2006-2010 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Script to generate documentation from various sources.
+
+$:.unshift(File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib')))
+require 'rubygems'
+require 'erb'
+require 'fileutils'
+require 'yaml'
+require 'rexml/document'
+require 'rdoc/markup/simple_markup'
+require 'rdoc/markup/simple_markup/to_html'
+require 'singleton'
+require 'syntax/convertors/html'
+
+module Bee
+
+  # Module for Bee documentation generation.
+  module Doc
+
+    # Console help.
+    HELP = 'beedoc [-h] [-o dir] menu
+-h    Print help about usage and exit.
+-o    Output directory for documentation.
+menu  Menu file to process.'
+    # Exit value on error parsing command line
+    EXIT_PARSING_CMDLINE = 1
+    # Exit value on doc error
+    EXIT_DOC_ERROR = 2
+    # Exit value on unknown error
+    EXIT_UNKNOWN_ERROR = 3
+
+    #########################################################################
+    #                            CLASS DOCERROR                             #
+    #########################################################################
+
+    class DocError < RuntimeError; end
+
+    module DocErrorMixin
+
+      # Convenient method to raise a DocError.
+      # - message: error message.
+      def error(message)
+        raise DocError.new(message)
+      end    
+
+    end
+
+    #########################################################################
+    #                          PARSE COMMAND LINE                           #
+    #########################################################################
+
+    # Parse command line and return arguments.
+    def self.parse_command_line
+      help = false
+      output = nil
+      require 'getoptlong'
+      begin
+        opts = GetoptLong.new(['--help', '-h', GetoptLong::NO_ARGUMENT ],
+                              ['--output', '-o', GetoptLong::REQUIRED_ARGUMENT])
+        opts.each do |opt, arg|
+          case opt
+          when '--help'
+            help = true
+          when '--output'
+            output = arg
+          end
+        end
+        help = true if ARGV.length > 1
+        menu = ARGV[0]
+        return [help, output, menu]
+      end
+    end
+
+    # Run BeeDoc from command line.
+    def self.start_command_line
+      STDOUT.sync = true
+      begin
+        help, output, menu = parse_command_line
+      rescue
+        puts "ERROR: parsing command line (type 'beedoc -h' for help): #{$!}"
+        exit(EXIT_PARSING_CMDLINE)
+      end
+      begin        
+        if help
+          puts COPYRIGHT
+          puts HELP
+        else
+          raise DocError.new("No menu file") if not menu
+          Bee::Doc::Menu.new(menu).generate(output)
+          puts "OK"
+        end
+      rescue DocError
+        puts "ERROR: #{$!}"
+        exit(EXIT_DOC_ERROR)
+      rescue Exception => e
+        puts "ERROR: #{$!}"
+        puts e.backtrace.join("\n")
+        exit(EXIT_UNKNOWN_ERROR)
+      end
+    end      
+
+    #########################################################################
+    #                              CLASS MENU                               #
+    #########################################################################
+
+    class Menu
+
+      include DocErrorMixin
+
+      # Title for documentation.
+      attr_reader :title
+      # Generation date.
+      attr_reader :date
+      # List of menu entries.
+      attr_reader :entries
+      # Base directory.
+      attr_reader :base
+      # Contents for page being generated.
+      attr_reader :contents
+      # Processor for PI.
+      attr_reader :processor
+
+      # Constructor.
+      # - file: menu file to load.
+      def initialize(file)
+        begin
+          @base = File.dirname(file)
+          @processor = Processor.new(self)
+          source = File.read(file)
+          menu = YAML::load(source)
+          @entries = []
+          error "Menu must be a list" unless menu.kind_of?(Array)
+          error "Menu description must be first entry" unless 
+            menu[0].kind_of?(Hash) and menu[0]['menu']
+          @title = menu[0]['menu']
+          @date = Time.now
+          for entry in menu[1..-1]
+            @entries << Entry.new(entry, self)
+          end
+        rescue
+          error "Error loading menu file: #{$!}"
+        end
+      end
+
+      # Generate documentation.
+      # - output: output directory.
+      def generate(output)
+        error "Destination directory '#{output}' already exists" if
+          File.exists?(output)
+        FileUtils.makedirs(output)
+        for entry in @entries
+          entry.generate(output, @date)
+        end
+        # write stylesheet
+        File.open(File.join(output, 'stylesheet.css'), 'w') do |file|
+          file.write(Entry::DEFAULT_STYLESHEET)
+        end
+      end
+
+      # Get absolute path for file relative to menu file.
+      # - file: file relative to menu file.
+      def abs_file(file)
+      	return File.join(@base, file)
+      end
+
+    end
+
+    #########################################################################
+    #                             CLASS ENTRY                               #
+    #########################################################################
+
+    # A menu entry.
+    class Entry
+
+      include DocErrorMixin
+
+      # Parent menu.
+      attr_reader :menu
+      # Title.
+      attr_reader :title
+      # Document type (text, html, dir or link).
+      attr_reader :type
+      # File.
+      attr_reader :file
+      # Source directory.
+      attr_reader :dir
+      # Destination file.
+      attr_reader :dest
+      # Generation date.
+      attr_reader :date
+
+      # Entry types.
+      TYPES = ['yaml', 'rdoc', 'html', 'text', 'dir', 'link', 'section']
+      # Default TOC level (header level parsed to generate TOC).
+      DEFAULT_TOC_LEVEL = 2
+      # Default TOC depth.
+      DEFAULT_TOC_DEPTH = 1
+
+      # Constructor.
+      # - entry: menu entry as a Hash.
+      # - menu: the root menu for the entry.
+      def initialize(entry, menu)
+        # check keys in entry
+        error "Unknown entry type '#{entry['type']}'" unless
+          TYPES.member?(entry['type'])
+        error "A menu entry must be a Hash" unless entry.kind_of?(Hash)
+        error "'title' key is mandatory in menu entries" unless entry['title']
+        error "One of 'file' or 'dir' keys must be in a menu entry" unless
+          (entry['file'] or entry['dir']) or entry['type'] == 'link' or 
+          entry['type'] == 'section'
+        error "'file' and 'dir' keys can't be in a menu entry at the " +
+          "same time" if entry['file'] and entry['dir']
+        # save keys into fields
+        @menu = menu
+        @title = entry['title']
+        @type = entry['type']
+        @file = entry['file']
+        @dir = entry['dir']
+        @dest = entry['dest']
+        @template = entry['template']
+        @erb = entry['erb']
+        @toc = entry['toc']
+        @level = entry['level'] || DEFAULT_TOC_LEVEL
+        @depth = entry['depth'] || DEFAULT_TOC_DEPTH
+        @process = entry['process']
+      end
+
+      # Generate a menu entry.
+      # - output: destination directory.
+      # - date: generation date.
+      def generate(output, date)
+        @date = date
+        case @type
+        when 'yaml'
+          # entry is a yaml file: process using an ERB
+          puts "Generating '#{@dest}' from yaml..."
+          template = load_template(output)
+          erb = ERB.new(File.read(@menu.abs_file(@erb)), nil, '%')
+          @data = YAML::load(File.read(@menu.abs_file(file)))
+          @contents = erb.result(get_binding)
+          @contents = process_instructions(@contents) if @process
+          @table = generate_toc(@contents, @level, @depth) if @toc
+          result = template.result(get_binding)
+          File.open(File.join(output, @dest), 'w') do |file| 
+            file.write(result)
+          end
+        when 'rdoc'
+          # entry is a rdoc file: process rdoc
+          puts "Generating '#{@dest}' from rdoc..."
+          template = load_template(output)
+          markup = SM::SimpleMarkup.new
+          tohtml = SM::ToHtml.new
+          rdoc = File.read(@menu.abs_file(@file))
+          @contents = markup.convert(rdoc, tohtml)
+          @contents = process_instructions(@contents) if @process
+          @table = generate_toc(@contents, @level, @depth) if @toc
+          result = template.result(get_binding)
+          File.open(File.join(output, @dest), 'w') do |file| 
+            file.write(result)
+          end
+        when 'text'
+          # entry is a text file: process it to remove HTML entities
+          puts "Generating '#{@dest}' from text..."
+          template = load_template(output)
+          @contents = File.read(@menu.abs_file(@file))
+          @contents = Entry.escape_special_characters(@contents)
+          @contents = process_instructions(@contents) if @process
+          result = template.result(get_binding)
+          File.open(File.join(output, @dest), 'w') do |file| 
+            file.write(result)
+          end
+        when 'html'
+          # entry is an HTML file: put it verbatim
+          puts "Generating '#{@dest}' from html..."
+          template = load_template(output)
+          @contents = File.read(@menu.abs_file(@file))
+          @contents = process_instructions(@contents) if @process
+          @table = generate_toc(@contents, @level, @depth) if @toc
+          result = template.result(get_binding)
+          File.open(File.join(output, @dest), 'w') do |file| 
+            file.write(result)
+          end
+        when 'dir' 
+          # entry is a directory: copy it to destination directory
+          puts "Copying directory '#{@dir}'..."
+          FileUtils.cp_r(File.join(@menu.base, @dir), 
+                         File.join(output, @dest))
+        when 'link'
+          # entry is a link: nothing to do
+        when 'section'
+          # entry is a section: nothing  to do
+        else
+          error "Unknown entry type '#{@type}'"
+        end
+      end
+
+      private
+
+      # Load template and write default stylesheet if necessary.
+      # - output: output directory.
+      def load_template(output)
+        if @template
+          template = ERB.new(File.read(@menu.abs_file(@template)))
+        else
+          template = ERB.new(DEFAULT_TEMPLATE)
+          File.open(File.join(output, 'stylesheet.css'), 'w') do |file|
+            file.write(DEFAULT_STYLESHEET)
+          end
+        end
+        return template
+      end
+
+      # Generate table of contents as an Array.
+      # - contents: HTML page contents.
+      # - level: header level to scan.
+      # - depth: toc depth.
+      # Return: TOC as an Array with reference to link the page.
+      def generate_toc(contents, level, depth)
+        level = DEFAULT_TOC_LEVEL if not level
+        levels = (level..(level+depth-1)).to_a.join
+        toc = []
+        contents.gsub!(/<[h|H][#{levels}]>.*?<\/[h|H][#{levels}]>/) do |tag|
+          name = tag.match(/<[h|H][#{levels}]>(.*?)<\/[h|H][#{levels}]>/)[1]
+          d = tag.match(/<[h|H]([#{levels}])>.*?<\/[h|H][#{levels}]>/)[1].to_i -
+            level
+          toc << { :title => name, :depth => d }
+          "<a name=\"#{name}\">#{tag}</a>"
+        end
+        return toc
+      end
+
+      # Get a binding for ERB generation.
+      def get_binding
+        return binding
+      end
+
+      # Escape HTML special characters (such as & " ' < and >).
+      # - string: string to process.
+      # Return: processed string.
+      def self.escape_special_characters(string)
+        return string.gsub(/&/, '&amp;').gsub(/"/, '&quot;').
+          gsub(/'/, '&apos;').gsub(/</, '&lt;').gsub(/>/, '&gt;')
+      end
+      
+      # Process page contents using processing instructions.
+      # - contents: contents to process.
+      def process_instructions(contents)
+      	return contents.gsub(/<\?.*?\?>/m) do |instruction|
+          call_processor(instruction)
+      	end
+      end
+      
+      # Process a given processing instruction.
+      # - instruction: processing instruction to process.
+      def call_processor(instruction)
+        begin
+          xml = "<#{instruction[2..-3].strip}/>"
+          document = REXML::Document.new(xml)
+          root = document.root
+          command = root.name
+          args = {}
+          for name in root.attributes.keys
+            value = root.attributes[name]
+            args[name] = value
+          end
+      	  error "Instruction '#{command}' not found" if 
+      	    not @menu.processor.respond_to?(command)
+      	  return @menu.processor.send(command, args)
+      	rescue
+      	  error "Error parsing instruction '#{instruction}': #{$!}"
+      	end
+      end
+
+      # Default ERB template to generate HTML.
+      DEFAULT_TEMPLATE = '<html>
+<head>
+<meta http-equiv=Content-Type content="text/html; charset=utf-8">
+<title><%= @menu.title %></title>
+<link rel="stylesheet" type="text/css" href="stylesheet.css">
+<link rel="stylesheet" type="text/css" href="ruby.css">
+<link rel="stylesheet" type="text/css" href="yaml.css">
+<link rel="stylesheet" type="text/css" href="xml.css">
+</head>
+<body marginwidth="10" marginheight=10" bgcolor="#213449">
+<table class="page" width="850" height="100%" align="center">
+<tr class="title">
+<td class="title" colspan="2" height="100">
+<table class="title" width="100%">
+<tr class="title">
+<td class="title" align="left" width="75%">
+<img src="bee-icon.png">
+</td>
+<td class="title" align="center" width="25%">
+<img src="bee-logo.gif">
+</td>
+</tr>
+</table>
+</td>
+</tr>
+<tr>
+<td class="ruller" colspan="2" 
+    align="left" valign="middle"
+    height="10">
+Last update: <%= @date.strftime("%Y-%m-%d") %>
+</td>
+</tr>
+<tr>
+<td class="menu"
+    align="left" valign="top"
+    width="130">
+<%
+for entry in @menu.entries
+  link = entry.dest
+  link += \'/index.html\' if entry.dir
+  if entry.type != "section"
+%>
+<a class="menu" href="<%= link %>"><%= entry.title %></a><br>
+<%
+  else
+%>
+<h2 class="menu"><%= entry.title %></h2>
+<%
+  end
+  if entry.title == @title
+    if @table
+%>
+<table class="space"><tr class="space"><td class="space"></td></tr></table>
+<table class="toc" width="100%">
+<tr class="toc">
+<td class="toc">
+<%    for section in @table %>
+<%      indent = "&#x00A0;&#x00A0;"*section[:depth] %>
+<%= indent %><a class="toc" href="#<%= section[:title] %>"><font size="-<%= section[:depth]+1 %>"><%= section[:title] %></font></a><br/>
+<%    end %>
+</td>
+</tr>
+</table>
+<table class="space"><tr class="space"><td class="space"></td></tr></table>
+<%
+    end
+  end
+end
+%>
+</td>
+<td class="page"
+    align="left" valign="top">
+<h1><%= @title %></h1>
+<% if @type == "text" %>
+<pre class="page"><%= @contents %></pre>
+<% else %>
+<%= @contents %>
+<% end %>
+<br>
+</td>
+</tr>
+</table>
+<table class="footer" width="800" align="center">
+<tr class="footer">
+<td class="footer">
+(C) Michel Casabianca & Contributors - 2006-2010 - Pictures courtesy of 
+<a class="footer" href="http://pdphoto.org/">PD Photo.org</a>
+</td>
+</tr>
+</table>
+</body>
+</html>'
+
+      public
+
+      # Default style sheet.
+      DEFAULT_STYLESHEET = '
+/* Title style */
+table.title {
+  border: solid Opx #FFFFFF;
+  border-collapse: collapse;
+}
+tr.title {
+  border: solid Opx #FFFFFF;
+}
+td.title {
+  border: solid 0px #000000;
+  padding: 0px;
+  background-color: #F8DE5A;
+}
+
+/* Ruller style */
+td.ruller {
+  border: solid 0px #000000;
+  text-align: right;
+  padding: 3px;
+  background-color: #000000;
+  color: #FFFFFF;
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+}
+
+/* Menu style */
+td.menu {
+  border: solid 0px #000000;
+  padding: 10px;
+  background-color: #FF9000;
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 12pt;
+}
+h2.menu {
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  color: #000000;
+  border-bottom: 1px dotted #FFFFFF;
+  font-size: 12pt;
+}
+a.menu:link {
+  text-decoration: none;
+  color: #000000;
+}
+a.menu:visited {
+  text-decoration: none;
+  color: #000000;
+}
+a.menu:active {
+  text-decoration: none;
+  color: #000000;
+}
+a.menu:hover {
+  text-decoration: underline;
+  color: #000000;
+  background-color: #FF9000;
+}
+
+/* TOC style */
+table.toc {
+  border: solid 1px #A0A0A0;
+}
+td.toc {
+  border: solid 0px #000000;
+  padding: 5px;
+  background-color: #F0F0A0;
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+}
+a.toc:link {
+  text-decoration: none;
+  color: #000000;
+}
+a.toc:visited {
+  text-decoration: none;
+  color: #000000;
+}
+a.toc:active {
+  text-decoration: none;
+  color: #000000;
+}
+a.toc:hover {
+  text-decoration: underline;
+  color: #000000;
+}
+
+/* Page style */
+pre.page {
+  font-family: Courier, Verdana, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  background-color: #FFFFFF;
+  border-width: 0px;
+  border-color: #FFFFFF;
+  border-style: solid;
+}
+table.page {
+  border: solid 2px #000000;
+}
+td.page {
+  padding: 10px;
+  border: solid 0px #000000;
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  background-color: #FFFFFF;
+}
+
+/* Footer style */
+table.footer {
+  border: solid 0px #000000;
+}
+td.footer {
+  padding: 5px;
+  border: solid 0px #000000;
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  color: #A0A0A0;
+  text-align: center;
+}
+a.footer:link {
+  text-decoration: none;
+  color: #FF9000;
+}
+a.footer:visited {
+  text-decoration: none;
+  color: #A0A0A0;
+}
+a.footer:active {
+  text-decoration: none;
+  color: #FF9000;
+}
+a.footer:hover {
+  text-decoration: underline;
+  color: #FF9000;
+}
+
+/* Style that defines table elements for spacing */
+table.space {
+  border: solid 0px #000000;
+}
+tr.space {
+  border: solid 0px #000000;
+}
+td.space {
+  border: solid 0px #000000;
+  padding: 2px;
+}
+
+/* pre element for term output */
+pre.term {
+  clear: both;
+  overflow: auto;
+  color: #FFFFFF;
+  background-color: #555555;
+  padding: 0;
+  padding: 1.0em;
+  border-width: 1px;
+  border-color: #C0C0C0;
+  border-style: solid;
+}
+
+/* Contents style (default element form) */
+h1 {
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  color: #FF9000;
+  text-align: center;
+  font-size: 30pt;
+}
+h2,h3,h4,h5 {
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  color: #FF9000;
+  border-bottom: 2px dotted #000000;
+}
+p {
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+}
+table {
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  border: solid 0px #000000;
+  border-collapse: collapse;
+}
+th {
+  padding: 5px;
+  background-color: #FF9000;
+  border: solid 1px #000000;
+  text-align: left;
+}
+td {
+  padding: 5px;
+  border: solid 1px #000000;
+  text-align: left;
+}
+li {
+  font-family: Verdana, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  list-style: square;
+}
+a:link {
+  text-decoration: none;
+  color: #FF9000;
+}
+a:visited  {
+  text-decoration: none;
+  color: #000000;
+}
+a:active {
+  text-decoration: none;
+  color: #000000;
+}
+a:hover {
+  text-decoration: underline;
+  color: #FF9000;
+}
+pre {
+  clear: both;
+  overflow: auto;
+  background-color: #EFEFEF;
+  padding: 0;
+  padding: 1.0em;
+  border-width: 1px;
+  border-color: #C0C0C0;
+  border-style: solid;
+}
+'
+
+    end
+    
+    # Class for PI processing.
+    class Processor
+    
+      include DocErrorMixin
+      
+      def initialize(menu)
+      	@menu = menu
+      end
+      
+      def include(args)
+      	file = args['file']
+      	error "Missing argument 'file' for 'include' instruction" if not file
+      	abs_file = @menu.abs_file(file)
+      	error "File to include not found '#{abs_file}'" if 
+      	  not File.exists?(abs_file)
+        return Bee::Doc::syntax_colorization(abs_file)
+      end
+      
+      def bee(args)
+      	build = args['build']
+      	options = args['options']
+      	if build
+          abs_file = @menu.abs_file(build)
+      	  error "Build file not found '#{abs_file}'" if 
+      	    not File.exists?(abs_file)
+      	  value = `bee #{options} -f #{abs_file}`
+      	else
+      	  value = `bee #{options}`
+      	end
+        escaped = Entry.escape_special_characters(value)
+        return "<pre class='term'>#{escaped}</pre>"
+      end
+    
+      def run(args)
+        command = args['command']
+        raise "Missing argument 'command' for 'run' instruction" if not command
+        directory = args['directory']||'.'
+        print = args['print']||command
+        error = (args['error']=='true' or 
+                 args['error']=='yes' or 
+                 args['error']=='1')||false
+        current_dir = Dir.pwd
+        begin
+          Dir.chdir(@menu.base)
+          Dir.chdir(directory)
+          output = `#{command} 2>&1`
+          if $? != 0 and not error
+            raise "Error running command '#{command}': exit value #{$?}"
+          end
+          if $? == 0 and error
+            raise "Error running command '#{command}': error expected"
+          end
+          escaped = Entry.escape_special_characters(output)
+          return "<pre class='term'>$ #{print}\n#{escaped}</pre>"
+        ensure
+          Dir.chdir(current_dir)
+        end
+      end
+    
+    end
+    
+    TYPES = {
+      '.rb' => 'ruby',
+      '.yml' => 'yaml',
+      '.yaml' => 'yaml',
+      '.xml' => 'xml'
+    }
+    
+    def self.syntax_colorization(file)
+      type = TYPES[File.extname(file)]
+      if type
+        convertor = Syntax::Convertors::HTML.for_syntax(type)
+        body = convertor.convert(File.read(file), false)
+        return "<pre class='#{type}'>#{body}</pre>"
+      else
+        return "<pre>#{Entry.escape_special_characters(File.read(file))}</pre>"
+      end
+    end
+
+  end
+
+end
+
+# Start command line
+if $0 == __FILE__
+  Bee::Doc.start_command_line
+end

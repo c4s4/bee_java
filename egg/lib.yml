@@ -1,0 +1,71 @@
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- build:       tiny
+  default:     all
+  description: "Generate a Java project for a library"
+
+- properties:
+    name: lib
+    main: lib.Lib
+    description: |
+      This script will create Java project for a library. Build file has
+      'compile', 'test' and 'jar' targets to compile, run unit tests, and
+      generate JAR archive.
+
+- target:      welcome
+  description: "Print information message"
+  script:
+  - print: :description
+
+- target:      prompt
+  depends:     welcome
+  description: "Prompt for project information"
+  script:
+  - print: "Please answer following questions to generate the project:"
+  - prompt:
+      message: "What is the library's name?"
+      default: :name
+      property: name
+  - prompt:
+      message: "What is the library's main class?"
+      default: :main
+      property: main
+
+- target:      generate
+  depends:     prompt
+  description: "Generate project"
+  script:
+  - print: "Generating project..."
+  - rb: |
+      error "A directory named '#{name}' already exists, aborting" if
+        File.exists?("#{here}/#{name}")
+  - mkdir: "#{here}/#{name}/src/#{File.dirname(main.gsub(/\./,'/'))}"
+  - erb: { src: "#{base}/lib/source.erb", dest: "#{here}/#{name}/src/#{main.gsub(/\./,'/')}.java" }
+  - mkdir: "#{here}/#{name}/test/#{File.dirname(main.gsub(/\./,'/'))}"
+  - erb: { src: "#{base}/lib/test.erb", dest: "#{here}/#{name}/test/#{main.gsub(/\./,'/')}Test.java" }
+  - erb: { src: "#{base}/lib/build.erb", dest: "#{here}/#{name}/build.yml" }
+  - cp:  { src: "#{base}/lib/dependencies.yml", dest: "#{here}/#{name}/dependencies.yml" }
+
+- target:      customization
+  depends:     generate
+  description: "Print information about project customization"
+  script:
+  - print: |
+      Project has been generated in directory '#{name}'. Type 'bee -b' to
+      print information about generated build file.
+      Enjoy!
+
+- target:  all
+  depends: [welcome, prompt, generate, customization]

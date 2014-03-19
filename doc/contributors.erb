@@ -1,0 +1,19 @@
+<h>Here is the list of people that are fueling this project:</p>
+
+<table>
+<% for entry in @data %>
+<tr>
+<td valign="top">
+<%= entry['name'] %>
+</td>
+<td valign="top">
+<% if entry['email'] %>
+<a href="mailto:<%= entry['email'] %>"><%= entry['email'] %></a>
+<% end %>
+</td>
+<td valign="top">
+<%= entry['comment'] %>
+</td>
+</tr>
+<% end %>
+</table>

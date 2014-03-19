@@ -1,0 +1,111 @@
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+- build:       servlet
+  default:     all
+  description: Generate a Java project for a servlet
+
+- properties:
+    name:        servlet
+    main:        hello.World
+    description: |
+      This script will create Java project for a servlet. Type 'bee -b' to
+      list targets in generated project.
+
+- target:      welcome
+  description: Print information message
+  script:
+  - print: :description
+
+- target:      prompt
+  depends:     welcome
+  description: Prompt for project information
+  script:
+  - print: "Please answer following questions to generate the project:"
+  - prompt:
+      message: "What is the project name?"
+      default: :name
+      property: name
+  - prompt:
+      message: "What is the servlet main class?"
+      default: :main
+      property: main
+
+- target:      generate
+  depends:     prompt
+  description: Generate project
+  script:
+  - print: "Generating project..."
+  - rb: |
+      error "A directory named '#{name}' already exists, aborting" if
+        File.exists?("#{here}/#{name}")
+      _package_dir = File.dirname(main.gsub(/\./,'/'))
+      _package     = _package_dir.gsub(/\//, '.')
+      _main_class  = File.basename(main.gsub(/\./,'/'))
+      _test_class  = "#{_main_class}Test"
+  - mkdir: "#{here}/#{name}/src/#{_package_dir}"
+  - erb:
+      src:  "#{base}/servlet/Servlet.java"
+      dest: "#{here}/#{name}/src/#{_package_dir}/#{_main_class}.java"
+  - mkdir: "#{here}/#{name}/test/#{_package_dir}"
+  - erb:
+      src:  "#{base}/servlet/ServletTest.java"
+      dest: "#{here}/#{name}/test/#{_package_dir}/#{_test_class}.java"
+  - erb:
+      src:  "#{base}/servlet/build.yml"
+      dest: "#{here}/#{name}/build.yml"
+  - cp:
+      src:  "#{base}/servlet/dependencies.yml"
+      dest: "#{here}/#{name}/dependencies.yml"
+  - cp:
+      src:  "#{base}/servlet/tomcat.yml"
+      dest: "#{here}/#{name}/tomcat.yml"
+  - mkdir: "#{here}/#{name}/web"
+  - mkdir: "#{here}/#{name}/web/META-INF"
+  - mkdir: "#{here}/#{name}/web/WEB-INF"
+  - erb:
+      src:  "#{base}/servlet/MANIFEST.MF"
+      dest: "#{here}/#{name}/web/META-INF/MANIFEST.MF"
+  - erb:
+      src:  "#{base}/servlet/web.xml"
+      dest: "#{here}/#{name}/web/WEB-INF/web.xml"
+  - mkdir: "#{here}/#{name}/tomcat"
+  - mkdir: "#{here}/#{name}/tomcat/conf"
+  - mkdir: "#{here}/#{name}/tomcat/logs"
+  - mkdir: "#{here}/#{name}/tomcat/temp"
+  - mkdir: "#{here}/#{name}/tomcat/webapps"
+  - mkdir: "#{here}/#{name}/tomcat/work"
+  - erb:
+      src:  "#{base}/servlet/tomcat-server.xml"
+      dest: "#{here}/#{name}/tomcat/conf/server.xml"
+  - cp:
+      src:  "#{base}/servlet/tomcat-users.xml"
+      dest: "#{here}/#{name}/tomcat/conf/tomcat-users.xml"
+  - cp:
+      src:  "#{base}/servlet/tomcat-web.xml"
+      dest: "#{here}/#{name}/tomcat/conf/web.xml"
+
+- target:      customization
+  depends:     generate
+  description: Print information about project customization
+  script:
+  - print: |
+      Project has been generated in directory '#{name}'. Type 'bee -b' to
+      print information about generated build file. Please edit 'tomcat.yml'
+      build file to set correct value for property 'tomcat_home' (that is
+      Tomcat installation directory).
+      Enjoy!
+
+- target: all
+  depends: [welcome, prompt, generate, customization]

@@ -1,0 +1,56 @@
+- release:     0.0.7
+  date:        2012-??-??
+  description: "???"
+  fixed:
+  - "???."
+  added:
+  - "Added target 'jv_deps' to get dependencies."
+
+- release:     0.0.6
+  date:        2012-10-04
+  description: "Fixed java compile target"
+  fixed:
+  - "Fixed compile target regarding resources directory."
+  - "Fixed runner main class for junit old versions (3 and earlier)."
+  - "Classpath directories for compile, test and runtime in properties."
+  - "Managed permanent redirection while downloading dependencies."
+  - "Disabled aliases that produce errors in templates."
+  - "Moved default Maven repository to 'http://mirrors.ibiblio.org/maven2'."
+  - "Added a target to test templates (named 'test_templates')."
+
+- release:     0.0.5
+  date:        2012-09-04
+  description: "Fixed for latest Bee release"
+  fixed:
+  - "Removed sets in resources definition."
+
+- release:     0.0.4
+  date:        2012-06-03
+  description: "Bug fix release"
+  fixed:
+  - "Fixed classpath task documentation."
+  - "Script gendeps generates correct Bee scope dependencies."
+  - "Fixed Bee dependencies management."
+  - "Fixed 'system' dependency scope (by ignoring it)."
+  added:
+  - "Added support for maven POM properties in maven2bee tool."
+  - "Added parent build file for Java and Maven2 projects."
+  - "Added a clean target alias."
+
+- release:     0.0.3
+  date:        2011-02-17
+  description: "Fixed for latest Bee release (0.11.0)"
+  fixed:
+  - "Fixed for latest Bee release (0.11.0)."
+  - "Link to GemCutter in the documentation."
+  - "'bee_task' requires for 0.11.0 Bee release."
+
+- release:     0.0.2
+  date:        2010-10-11
+  description: "Bug fix release"
+  fixed:
+  - "Fixed dependency version to Bee (to 0.10.1)."
+
+- release:     0.0.1
+  date:        2010-10-11
+  description: "First public release"

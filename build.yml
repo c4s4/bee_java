@@ -1,0 +1,259 @@
+# Copyright 2008-2009 Michel Casabianca <michel.casabianca@gmail.com>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Build info
+- build:       bee_java
+  default:     all
+  context:     build.rb
+  description: BeeJava is a package to manage Java project using bee.
+
+# Build properties
+- properties:
+    name:         "bee_java"
+    version:      "0.0.7"
+    author:       "Michel Casabianca"
+    years:        "2008-2012"
+    platform:     "Gem::Platform::RUBY"
+    summary:      "BeeJava is a package to build and generate Java project using Bee."
+    email:        "michel.casabianca@gmail.com"
+    homepage:     "http://bee.rubyforge.org"
+    rubyforge:    "none"
+    lib_dir:      "lib"
+    test_dir:     "test"
+    build_dir:    "build"
+    readme_erb:   "readme.erb"
+    readme_file:  "#{build_dir}/README"
+    license_file: "LICENSE"
+    rcov_unix:    "rcov"
+    rcov_windows: "c:/ruby/bin/rcov.cmd"
+    rcov:         "#{if RUBY_PLATFORM =~ /win32/; rcov_windows else rcov_unix end}"
+    coverage_dir: "#{build_dir}/coverage"
+    rdoc_files:   [:readme_file, :license_file, "#{lib_dir}/*.rb"]
+    gem_spec_erb: "gem.spec.erb"
+    gem_spec:     "#{build_dir}/gem.spec"
+    gem_package:  "#{name}-#{version}.gem"
+    api_dir:      "#{build_dir}/api"
+    doc_dir:      "#{build_dir}/doc"
+    tasks_ref:    "#{build_dir}/tasks-reference.rdoc"
+    templ_ref:    "#{build_dir}/templates-reference.rdoc"
+    doc_files:    ["doc/img/*.png", "doc/img/*.gif", "doc/*.css"]
+    zip_excludes: ["**/CVS", "**/.DS_Store", "**/*~"]
+    zip_prefix:   "#{name}-#{version}"
+    zip_archive:  "#{build_dir}/#{name}-#{version}.zip"
+    home_user:    "casa"
+    home_host:    "rubyforge.org"
+    home_dir:     "/var/www/gforge-projects/bee/bee_java"
+    statcvs_home: "/opt/misc/statcvs-0.4.0"
+    statcvs_rep:  "#{build_dir}/statcvs"
+    status_cmd:   "cvs status 2> /dev/null | grep 'Locally Modified'"
+    cvs_tag:      "RELEASE-#{version.gsub(/\./, '-')}"
+    skip_targets: {xmlrpc: [run]}
+    clean_dirs:   :build_dir
+    clean_files:  "**/*~"
+    dependencies:
+      "bee": [">= 0.11.4"]
+    # tells if we should run tests that need network
+    net_test:     false
+
+# Build targets
+- target:      test
+  description: Run unit tests
+  script:
+  - mkdir: :build_dir
+  - rb: "ENV['NET_TEST']=net_test.to_s"
+  - test:
+      includes: "#{test_dir}/**/tc_*.rb"
+
+- target:      gem
+  depends:     [clean, test]
+  description: Generate Gem package
+  script:
+  - mkdir: :build_dir
+  - erb: { src: :readme_erb, dest: :readme_file }
+  - erb: { src: :gem_spec_erb, dest: :gem_spec }
+  - gem: :gem_spec
+  - mv: { src: :gem_package, dest: :build_dir }
+
+- target:      coverage
+  description: Generate test coverage report
+  script:
+  - mkdir: :build_dir
+  - rb: "ENV['NET_TEST']=net_test.to_s"
+  - "#{rcov} -o #{coverage_dir} #{test_dir}/tc_*.rb"  
+
+- target:      api
+  description: Generate API documentation
+  script:
+  - mkdir: :build_dir
+  - erb: { src: :readme_erb, dest: :readme_file }
+  - rdoc: { includes: :rdoc_files, dest: :api_dir }
+
+- target:      doc
+  depends:     [clean, coverage, api]
+  description: Generate documentation
+  script:
+  - required:
+      library: syntax
+      message: "syntax must be installed to run target doc"
+  - mkdir: :build_dir
+  - print: "Generating tasks reference..."
+  - rb: "generate_tasks_reference(tasks_ref)"
+  - print: "Generating templates reference..."
+  - rb: "generate_templates_reference(templ_ref)"
+  - rb: "ENV['BEEOPT']=''"
+  - "ruby bin/beedoc -o #{doc_dir} doc/menu.yml"
+  - cp: { src: :doc_files, dest: :doc_dir }
+  - cp: { src: :api_dir, dest: :doc_dir }
+  - cp: { src: :coverage_dir, dest: :doc_dir }
+
+- target:      zip
+  depends:     [gem, doc]
+  description: Generate ZIP distribution archive
+  script:
+  - zip:
+      includes: :license_file
+      prefix:   :zip_prefix
+      dest:     :zip_archive
+  - zip:
+      root:     :build_dir
+      includes: "README"
+      prefix:   :zip_prefix
+      dest:     :zip_archive
+  - zip:
+      root:     :build_dir
+      includes: "*.gem"
+      prefix:   "#{zip_prefix}/gem"
+      dest:     :zip_archive
+  - zip:
+      root:     :doc_dir
+      includes: "**/*"
+      prefix:   "#{zip_prefix}/doc"
+      dest:     :zip_archive
+
+- target:      clean
+  description: Clean generated files
+  script:
+  - rmdir: :clean_dirs
+  - rm:    :clean_files
+
+- target:      all
+  depends:     [clean, zip]
+  description: Generate the whole project
+
+# other convenient targets
+- target:      publish
+  depends:     doc
+  description: Publish documentation on RubyForge
+  script:
+  - "scp -r #{doc_dir}/* #{home_user}@#{home_host}:#{home_dir}/"
+
+- target:      push
+  depends:     [clean, gem]
+  description: Push gem on gemcutter (must have installed gemcutter to run)
+  script:
+  - "gem push #{build_dir}/#{gem_package}"
+
+- target:      tag
+  description: Tag the release and check that there are no uncommited changes
+  script:
+  - print: "Checking uncommited changes"
+  - rb: "error 'There are uncommited changes' if `#{status_cmd}`.length > 0"
+  - print: "Tagging project '#{cvs_tag}'"
+  - "cvs tag #{cvs_tag}"
+
+- target:      checks
+  description: Checks before release (no uncommitted changes, version number
+               is the same in build file and release note, and date in release
+               note is current day)
+  script:
+  - print: "Checking uncommitted changes..."
+  - if: "`cvs -n -q update`.length > 0"
+    then:
+    - throw: "There are uncommitted changes"
+  - print: "Checking versions..."
+  - yaml_load:
+      prop: releases
+      file: doc/releases.yml
+  - if: "version != releases[0]['release']"
+    then:
+    - throw: "Version in build file and release note are different"
+  - print: "Checking date..."
+  - if: "Date.today != releases[0]['date']"
+    then:
+    - throw: "Date in release note is not today"
+
+- target:      release
+  depends:     [clean, checks, test, doc, gem, zip, push, publish, tag]
+  description: Release Bee, running test, generating doc, generating gem,
+               sending it to GemCutter and publishing doc on RubyForge
+  script:
+  - print: "!!! Don't forget to send gem and zip to RubyForge !!!"
+
+- target:      install
+  depends:     gem
+  description: Install generated gem
+  script:
+  - "sudo gem install -l #{build_dir}/#{gem_package}"
+
+- target:      uninstall
+  description: Uninstall gem
+  script:
+  - try:
+    - "sudo gem uninstall -x #{name}"
+    catch:
+
+- target:      test_templates
+  depends:     [uninstall, install]
+  description: Test templates launching all of them
+  script:
+  - rmdir: :build_dir
+  - mkdir: :build_dir
+  - cd: :build_dir
+  - for: _egg
+    in:  Dir.glob("../egg/*.yml").sort
+    do:
+    - rb: "_name = File.basename(_egg)[0..-5]"
+    - print: "##############################################################"
+    - print: "TESTING TEMPLATE #{_name}"
+    - print: "##############################################################"
+    - "yes '' | bee -t java.#{_name}"
+    - cd: :_name
+    - "bee -b > description.yml"
+    - yaml_load:
+        file: description.yml
+        prop: _desc
+    - for: _target
+      in:  _desc['alias'].keys.sort
+      do:
+      - if: "!skip_targets[_name] or (skip_targets[_name] and !skip_targets[_name].include?(_target))"
+        then:
+        - print: "--------------------------------------------------------------"
+        - print: "Running target #{_target}"
+        - print: "--------------------------------------------------------------"
+        - "bee #{_target}"
+    - cd: ..
+
+- target:      stats
+  description: Generate StatCVS report
+  script:
+  - mkdir: :statcvs_rep
+  - print: "Generating CVS logs..."
+  - "cvs log > #{build_dir}/cvs.log 2> /dev/null"
+  - "java -jar #{statcvs_home}/statcvs.jar -output-dir #{statcvs_rep} #{build_dir}/cvs.log #{base}"
+
+- target:      notes
+  depends:     clean
+  description: Print notes in files
+  script:
+  - rb: "print_notes('.')"

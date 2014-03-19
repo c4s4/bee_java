@@ -1,0 +1,20 @@
+package <%= File.dirname(main.gsub(/\./, '/')).gsub(/\//, '.') %>;
+
+import junit.framework.TestCase;
+
+public class <%= File.basename(main.gsub(/\./, '/')) %>Test
+    extends  TestCase {
+
+    private <%= File.basename(main.gsub(/\./, '/')) %> instance;
+
+    public void setUp() {
+        this.instance = new <%= File.basename(main.gsub(/\./, '/')) %>();
+    }
+
+    public void test() {
+        String expected = "Hello World!";
+        String actual = instance.hello("World");
+        assertEquals(expected, actual);
+    }
+
+}

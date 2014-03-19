@@ -1,0 +1,161 @@
+- build:       java
+  description: Build file for Java projects
+  default:     [clean, test]
+  alias:
+    compile: jv_compile
+    test:    jv_unit_test
+    run:     jv_run
+    jar:     jv_jar
+    lib:     jv_libs
+    clean:   jv_clean
+
+- properties:
+    # name of the project (used to generate JAR file)
+    name:              ~
+    # project version
+    version:           ~
+    # build directory where live genrated files
+    jv_build_dir:      "build"
+    # java source files directory
+    jv_src:            "src"
+    # java unit test files directory
+    jv_test_src:       "test"
+    # dependency file (defaults to 'dependencies.yml')
+    jv_dep_file:       "dependencies.yml"
+    # type of dependency file (defaults to 'bee')
+    jv_dep_type:       "bee"
+    # directory where are genrated class files
+    jv_classes:        "#{jv_build_dir}/classes"
+    # directory where are generated class files for unit tests
+    jv_test_classes:   "#{jv_build_dir}/test_classes"
+    # directories to add to compile classpath
+    jv_cp_comp_dirs:   [:jv_classes]
+    # directories to add to test classpath
+    jv_cp_test_dirs:   [:jv_classes, :jv_test_classes]
+    # directories to add to runtime classpath
+    jv_cp_run_dirs:    [:jv_classes]
+    # glob for unit tests to include
+    jv_test_includes:  ["**/*Test.java"]
+    # glob for unit tests to exclude
+    jv_test_excludes:  []
+    # directory where are resources to include in classpath
+    jv_res:            ~
+    # directory where are resources to include in test classpath
+    jv_test_res:       ~
+    # java main class to run
+    jv_main:           ~
+    # command line arguments for main class
+    jv_args:           ""
+    # JAR file to generate
+    jv_jar:            "#{jv_build_dir}/#{name}-#{version}.jar"
+    # directory where to copy dependencies libraries
+    jv_lib_dir:        "#{jv_build_dir}/lib"
+    # directories to clean
+    jv_clean_dirs:     [:jv_build_dir]
+    # files to clean
+    jv_clean_files:    []
+    # JUnit version
+    jv_junit_version:  '4'
+
+- target:      jv_classpath
+  description: Build Java compile, test and runtime classpath
+  script:
+  - java.classpath:
+      file:        :jv_dep_file
+      type:        :jv_dep_type
+      classpath:   jv_compile_cp
+      directories: :jv_cp_comp_dirs
+  - java.classpath:
+      file:        :jv_dep_file
+      type:        :jv_dep_type
+      classpath:   jv_test_cp
+      directories: :jv_cp_test_dirs
+      scope:       test
+  - java.classpath:
+      file:        :jv_dep_file
+      type:        :jv_dep_type
+      classpath:   jv_runtime_cp
+      directories: :jv_cp_run_dirs
+      scope:       runtime
+
+- target:      jv_compile
+  depends:     jv_classpath
+  description: Compile Java source files and copy resources
+  script:
+  - java.javac:
+      src:       :jv_src
+      dest:      :jv_classes
+      classpath: :jv_compile_cp
+  - if: defined?(jv_res) and File.exists?(jv_res)
+    then:
+    - copy:
+        root: :jv_res
+        dest: :jv_classes
+
+- target:      jv_test_compile
+  depends:     [jv_classpath, jv_compile]
+  description: Compile Java test source files
+  script:
+  - java.javac:
+      src:       :jv_test_src
+      dest:      :jv_test_classes
+      classpath: :jv_test_cp
+  - if: defined?(jv_test_res) and File.exists?(jv_test_res)
+    then:
+    - copy:
+        root: :jv_test_res
+        dest: :jv_classes
+
+- target:      jv_unit_test
+  depends:     jv_test_compile
+  description: Run Java unit tests
+  script:
+  - java.junit:
+      src:       :jv_test_src
+      includes:  :jv_test_includes
+      excludes:  :jv_test_excludes
+      classpath: :jv_test_cp
+      version:   :jv_junit_version
+
+- target:      jv_run
+  depends:     jv_compile
+  description: Run main class
+  script:
+  - java.java:
+      main:      :jv_main
+      classpath: :jv_runtime_cp
+      arguments: :jv_args
+
+- target:      jv_jar
+  depends:     jv_compile
+  description: Build JAR file
+  script:
+  - java.jar:
+      src:  :jv_classes
+      dest: :jv_jar
+
+- target:      jv_libs
+  depends:     [jv_deps, jv_jar]
+  description: Assemble rutime classpath in a directory
+  script:
+  - cp:
+      src:  :jv_jar
+      dest: :jv_lib_dir
+
+- target:      jv_deps
+  description: Assemble dependency libraries in a directory
+  script:
+  - java.classpath:
+      dependencies: jv_dependencies
+      scope:        runtime
+  - mkdir: :jv_lib_dir
+  - cp:
+      src:  :jv_dependencies
+      dest: :jv_lib_dir  
+
+- target:      jv_clean
+  description: Clean generated files
+  script:
+  - rmdir: :jv_clean_dirs
+  - rm:    :jv_clean_files
+
