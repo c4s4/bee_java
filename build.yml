@@ -117,30 +117,6 @@
   - cp: { src: :api_dir, dest: :doc_dir }
   - cp: { src: :coverage_dir, dest: :doc_dir }
 
-- target:      zip
-  depends:     [gem, doc]
-  description: Generate ZIP distribution archive
-  script:
-  - zip:
-      includes: :license_file
-      prefix:   :zip_prefix
-      dest:     :zip_archive
-  - zip:
-      root:     :build_dir
-      includes: "README"
-      prefix:   :zip_prefix
-      dest:     :zip_archive
-  - zip:
-      root:     :build_dir
-      includes: "*.gem"
-      prefix:   "#{zip_prefix}/gem"
-      dest:     :zip_archive
-  - zip:
-      root:     :doc_dir
-      includes: "**/*"
-      prefix:   "#{zip_prefix}/doc"
-      dest:     :zip_archive
-
 - target:      clean
   description: Clean generated files
   script:
@@ -151,7 +127,6 @@
   depends:     [clean, zip]
   description: Generate the whole project
 
-# other convenient targets
 - target:      publish
   depends:     doc
   description: Publish documentation on RubyForge
