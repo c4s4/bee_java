@@ -5,6 +5,7 @@
   - "???."
   added:
   - "Added target 'jv_deps' to get dependencies."
+  - "Added 'jv_vm_opt' for VM options."
 
 - release:     0.0.6
   date:        2012-10-04

@@ -46,6 +46,8 @@
     jv_main:           ~
     # command line arguments for main class
     jv_args:           ""
+    # Java VM command line options
+    jv_vm_opt:         ""
     # JAR file to generate
     jv_jar:            "#{jv_build_dir}/#{name}-#{version}.jar"
     # directory where to copy dependencies libraries
@@ -125,6 +127,7 @@
       main:      :jv_main
       classpath: :jv_runtime_cp
       arguments: :jv_args
+      options:   :jv_vm_opt
 
 - target:      jv_jar
   depends:     jv_compile
